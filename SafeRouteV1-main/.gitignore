@@ -1,0 +1,12 @@
+# Node/React
+node_modules/
+.expo/
+
+# Python
+__pycache__/
+*.pyc
+env/
+venv/
+
+# Secrets (Never upload API keys!)
+.env

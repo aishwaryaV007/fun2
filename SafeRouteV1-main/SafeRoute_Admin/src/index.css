@@ -1,0 +1,32 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-zinc-950 text-white antialiased font-sans;
+  }
+}
+
+/* Custom scrollbar for sleek dark mode */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  @apply bg-zinc-900;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-zinc-700 rounded-full;
+}
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-zinc-600;
+}
+
+/* Leaflet map dark mode overrides (optional tweaks for popups if required) */
+.leaflet-popup-content-wrapper, .leaflet-popup-tip {
+  @apply bg-zinc-900 text-zinc-100 shadow-xl border border-zinc-800;
+}
+.leaflet-container a.leaflet-popup-close-button {
+  @apply text-zinc-400 hover:text-white;
+}

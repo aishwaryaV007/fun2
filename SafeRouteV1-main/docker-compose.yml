@@ -1,0 +1,156 @@
+version: '3.8'
+
+services:
+  # Backend API Service
+  backend:
+    build:
+      context: ./SafeRoute_Backend
+      dockerfile: Dockerfile
+    container_name: saferoute-backend
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    environment:
+      - BACKEND_HOST=0.0.0.0
+      - BACKEND_PORT=8000
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - DATABASE_URL=${DATABASE_URL:-sqlite:///./data/safe_routes.db}
+      - SOS_DATABASE_URL=${SOS_DATABASE_URL:-sqlite:///./data/sos_alerts.db}
+      - CRIME_DATABASE_URL=${CRIME_DATABASE_URL:-sqlite:///./data/crime_reports.db}
+      - SAFETY_API_KEY=${SAFETY_API_KEY:-dev-key-change-in-production}
+      - ADMIN_API_KEY=${ADMIN_API_KEY:-admin-key-change-in-production}
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:5173}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - ./SafeRoute_Backend/data:/app/data
+      - ./SafeRoute_Backend/.env:/app/.env:ro
+    networks:
+      - saferoute-network
+    depends_on:
+      - db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Admin Dashboard Service
+  admin:
+    build:
+      context: ./SafeRoute_Admin
+      dockerfile: Dockerfile
+    container_name: saferoute-admin
+    ports:
+      - "${ADMIN_PORT:-5173}:5173"
+    environment:
+      - VITE_BACKEND_URL=${ADMIN_BACKEND_URL:-http://localhost:8000}
+      - VITE_WS_URL=${ADMIN_WS_URL:-ws://localhost:8000}
+      - VITE_GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY:-}
+    networks:
+      - saferoute-network
+    depends_on:
+      - backend
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:5173"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # PostgreSQL Database (optional, for production)
+  # Uncomment this section to use PostgreSQL instead of SQLite
+  # db:
+  #   image: postgres:15-alpine
+  #   container_name: saferoute-db
+  #   environment:
+  #     POSTGRES_USER: ${DB_USER:-saferoute}
+  #     POSTGRES_PASSWORD: ${DB_PASSWORD:-change-me-in-production}
+  #     POSTGRES_DB: ${DB_NAME:-saferoute_db}
+  #   volumes:
+  #     - postgres-data:/var/lib/postgresql/data
+  #   ports:
+  #     - "5432:5432"
+  #   networks:
+  #     - saferoute-network
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U saferoute"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+
+  # Placeholder for DB (SQLite uses file system)
+  db:
+    image: busybox
+    container_name: saferoute-db-placeholder
+    command: echo "Using SQLite for development"
+    networks:
+      - saferoute-network
+
+  # Redis Cache (optional, for production scalability)
+  # Uncomment this section for caching and session storage
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: saferoute-redis
+  #   ports:
+  #     - "6379:6379"
+  #   volumes:
+  #     - redis-data:/data
+  #   networks:
+  #     - saferoute-network
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD", "redis-cli", "ping"]
+  #     interval: 10s
+  #     timeout: 3s
+  #     retries: 3
+
+  # Nginx Reverse Proxy (optional, for production)
+  # Uncomment this section for SSL/TLS termination and load balancing
+  # nginx:
+  #   image: nginx:alpine
+  #   container_name: saferoute-nginx
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./nginx.conf:/etc/nginx/nginx.conf:ro
+  #     - ./certs:/etc/nginx/certs:ro
+  #   networks:
+  #     - saferoute-network
+  #   depends_on:
+  #     - backend
+  #     - admin
+  #   restart: unless-stopped
+
+networks:
+  saferoute-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  redis-data:
+
+# Usage:
+# 
+# Development (SQLite):
+#   docker-compose up
+# 
+# Production (PostgreSQL + Redis):
+#   Uncomment the db and redis services
+#   docker-compose up --build
+# 
+# Build only (without starting):
+#   docker-compose build
+# 
+# View logs:
+#   docker-compose logs -f backend
+#   docker-compose logs -f admin
+# 
+# Stop services:
+#   docker-compose down
+# 
+# Remove volumes:
+#   docker-compose down -v
