@@ -1,0 +1,40 @@
+{
+    "expo": {
+        "name": "SafeRoute",
+        "slug": "SafeRoute",
+        "version": "1.0.0",
+        "orientation": "portrait",
+        "userInterfaceStyle": "light",
+        "ios": {
+            "supportsTablet": true,
+            "config": {
+                "googleMapsApiKey": "AIzaSyBVGuPmrKfIJZZBKJTc2WaLLUgJ_nxfJ4o"
+            }
+        },
+        "android": {
+            "package": "com.anonymous.SafeRoute",
+            "config": {
+                "googleMaps": {
+                    "apiKey": "AIzaSyBVGuPmrKfIJZZBKJTc2WaLLUgJ_nxfJ4o"
+                }
+            }
+        },
+        "plugins": [
+            [
+                "expo-build-properties",
+                {
+                    "android": {
+                        "useLegacyPackaging": true
+                    }
+                }
+            ],
+            [
+                "expo-location",
+                {
+                    "locationAlwaysAndWhenInUsePermission": "Allow SafeRoute to access your location for safe navigation and emergency response.",
+                    "isIOS": true
+                }
+            ]
+        ]
+    }
+}
