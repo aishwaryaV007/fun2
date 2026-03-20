@@ -14,6 +14,7 @@ import axios from 'axios';
 import { useAppStore } from '../store/useAppStore';
 import { useRealLocation } from '../hooks/useRealLocation';
 import { ROUTES_API_URL } from '../config/backend';
+import logger from '../utils/logger';
 
 const DEFAULT_WALKING_SPEED_METERS_PER_SECOND = 1.4;
 
@@ -45,18 +46,25 @@ function estimateTravelTime(distanceMeters: number): number {
   return Math.round(distanceMeters / DEFAULT_WALKING_SPEED_METERS_PER_SECOND);
 }
 
+/**
+ * RouteSelector Component
+ * Modal for selecting source and destination
+ * Calculates safest and fastest routes
+ */
 export const RouteSelector: React.FC<RouteSelectorProps> = ({ visible, onClose }) => {
   const { location: userLocation } = useRealLocation();
-  const { setCurrentRoute, setActiveRoute } = useAppStore();
+  const { setCurrentRoute, setActiveRoute, addToHistory } = useAppStore();
 
   const [sourceInput, setSourceInput] = useState('');
   const [destinationInput, setDestinationInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [selectedRoute, setSelectedRoute] = useState<'safest' | 'fastest' | null>(null);
 
   // Pre-fill source with current location when available
   useEffect(() => {
     if (userLocation && !sourceInput) {
       setSourceInput(`${userLocation.lat.toFixed(4)}, ${userLocation.lng.toFixed(4)}`);
+      logger.info('[RouteSelector] Pre-filled source with current location');
     }
   }, [userLocation]);
 
@@ -95,6 +103,7 @@ export const RouteSelector: React.FC<RouteSelectorProps> = ({ visible, onClose }
     }
 
     setLoading(true);
+    setSelectedRoute(routeType);
 
     try {
       const endpoint = `${ROUTES_API_URL}/${routeType}`;
@@ -104,9 +113,14 @@ export const RouteSelector: React.FC<RouteSelectorProps> = ({ visible, onClose }
         user_id: 'user-123',
       };
 
-      console.log(`[RouteSelector] Requesting ${routeType} route:`, payload);
+      logger.info(`[RouteSelector] Requesting ${routeType} route`, {
+        source,
+        destination,
+      });
 
-      const response = await axios.post<RouteResponse>(endpoint, payload);
+      const response = await axios.post<RouteResponse>(endpoint, payload, {
+        timeout: 15000,
+      });
       const data = response.data;
 
       if (!Array.isArray(data.route) || data.route.length === 0) {
@@ -124,7 +138,7 @@ export const RouteSelector: React.FC<RouteSelectorProps> = ({ visible, onClose }
         : estimateTravelTime(distanceMeters);
       const safetyScore = typeof data.safety_score === 'number' ? data.safety_score : 0;
 
-      console.log(`[RouteSelector] ${routeType} route received:`, {
+      logger.info(`[RouteSelector] ${routeType} route received`, {
         distance: distanceMeters,
         time: estimatedTime,
         pointCount: data.route.length,
@@ -136,15 +150,25 @@ export const RouteSelector: React.FC<RouteSelectorProps> = ({ visible, onClose }
         longitude: coord.lng,
       }));
 
-      setCurrentRoute({
+      const routeData = {
         type: routeType,
         coordinates: routeCoordinates,
         distance: distanceMeters,
         estimatedTime,
         safetyScore,
-      });
+      };
 
+      setCurrentRoute(routeData);
       setActiveRoute(routeType);
+
+      // Add to history
+      addToHistory({
+        id: Date.now().toString(),
+        timestamp: Date.now(),
+        route: routeData,
+        startLocation: source,
+        endLocation: destination,
+      });
 
       const timeStr = (estimatedTime / 60).toFixed(1);
       const distStr = (distanceMeters / 1000).toFixed(1);
@@ -154,7 +178,7 @@ export const RouteSelector: React.FC<RouteSelectorProps> = ({ visible, onClose }
         [{ text: 'OK', onPress: () => onClose() }]
       );
     } catch (error) {
-      console.error(`[RouteSelector] Error fetching ${routeType} route:`, error);
+      logger.error(`[RouteSelector] Error fetching ${routeType} route`, error);
       const errorMessage = axios.isAxiosError(error)
         ? error.response?.data?.detail || error.message
         : error instanceof Error
@@ -166,12 +190,14 @@ export const RouteSelector: React.FC<RouteSelectorProps> = ({ visible, onClose }
       );
     } finally {
       setLoading(false);
+      setSelectedRoute(null);
     }
   };
 
   const useMyLocation = () => {
     if (userLocation) {
       setSourceInput(`${userLocation.lat.toFixed(4)}, ${userLocation.lng.toFixed(4)}`);
+      logger.info('[RouteSelector] Updated source with current location');
     } else {
       Alert.alert('Location Not Available', 'Please enable location and try again');
     }
@@ -181,6 +207,7 @@ export const RouteSelector: React.FC<RouteSelectorProps> = ({ visible, onClose }
     const temp = sourceInput;
     setSourceInput(destinationInput);
     setDestinationInput(temp);
+    logger.info('[RouteSelector] Swapped source and destination');
   };
 
   return (
@@ -188,7 +215,10 @@ export const RouteSelector: React.FC<RouteSelectorProps> = ({ visible, onClose }
       <View style={styles.modalContainer}>
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={onClose}>
+          <TouchableOpacity onPress={() => {
+            onClose();
+            logger.info('[RouteSelector] Closed');
+          }}>
             <Text style={styles.closeButton}>✕</Text>
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Route Planner</Text>
@@ -211,13 +241,16 @@ export const RouteSelector: React.FC<RouteSelectorProps> = ({ visible, onClose }
                 keyboardType="decimal-pad"
               />
               {sourceInput && !loading && (
-                <TouchableOpacity onPress={() => setSourceInput('')}>
+                <TouchableOpacity onPress={() => {
+                  setSourceInput('');
+                  logger.debug('[RouteSelector] Cleared source input');
+                }}>
                   <Text style={styles.clearButton}>✕</Text>
                 </TouchableOpacity>
               )}
             </View>
             <TouchableOpacity
-              style={styles.myLocationButton}
+              style={[styles.myLocationButton, !userLocation && styles.disabled]}
               onPress={useMyLocation}
               disabled={loading || !userLocation}
             >
@@ -227,7 +260,7 @@ export const RouteSelector: React.FC<RouteSelectorProps> = ({ visible, onClose }
 
           {/* Swap Button */}
           <TouchableOpacity
-            style={styles.swapButton}
+            style={[styles.swapButton, loading && styles.disabled]}
             onPress={swapInputs}
             disabled={loading}
           >
@@ -248,7 +281,10 @@ export const RouteSelector: React.FC<RouteSelectorProps> = ({ visible, onClose }
                 keyboardType="decimal-pad"
               />
               {destinationInput && !loading && (
-                <TouchableOpacity onPress={() => setDestinationInput('')}>
+                <TouchableOpacity onPress={() => {
+                  setDestinationInput('');
+                  logger.debug('[RouteSelector] Cleared destination input');
+                }}>
                   <Text style={styles.clearButton}>✕</Text>
                 </TouchableOpacity>
               )}
@@ -260,11 +296,16 @@ export const RouteSelector: React.FC<RouteSelectorProps> = ({ visible, onClose }
           {/* Route Type Buttons */}
           <View style={styles.buttonSection}>
             <TouchableOpacity
-              style={[styles.routeButton, styles.safestButton]}
+              style={[
+                styles.routeButton,
+                styles.safestButton,
+                loading && styles.disabled,
+                selectedRoute === 'safest' && styles.activeRoute,
+              ]}
               onPress={() => fetchRoute('safest')}
               disabled={loading}
             >
-              {loading ? (
+              {selectedRoute === 'safest' && loading ? (
                 <ActivityIndicator color="#fff" />
               ) : (
                 <>
@@ -275,11 +316,16 @@ export const RouteSelector: React.FC<RouteSelectorProps> = ({ visible, onClose }
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.routeButton, styles.fastestButton]}
+              style={[
+                styles.routeButton,
+                styles.fastestButton,
+                loading && styles.disabled,
+                selectedRoute === 'fastest' && styles.activeRoute,
+              ]}
               onPress={() => fetchRoute('fastest')}
               disabled={loading}
             >
-              {loading ? (
+              {selectedRoute === 'fastest' && loading ? (
                 <ActivityIndicator color="#fff" />
               ) : (
                 <>
@@ -297,15 +343,6 @@ export const RouteSelector: React.FC<RouteSelectorProps> = ({ visible, onClose }
               <Text style={styles.loadingText}>Calculating route...</Text>
             </View>
           )}
-
-          {/* Info */}
-          <View style={styles.infoSection}>
-            <Text style={styles.infoText}>
-              {userLocation
-                ? `📍 Current: ${userLocation.lat.toFixed(4)}, ${userLocation.lng.toFixed(4)}`
-                : '📍 Acquiring location...'}
-            </Text>
-          </View>
         </View>
       </View>
     </Modal>
@@ -313,20 +350,6 @@ export const RouteSelector: React.FC<RouteSelectorProps> = ({ visible, onClose }
 };
 
 const styles = StyleSheet.create({
-  routeSelectorButton: {
-    backgroundColor: '#2196F3',
-    borderRadius: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    marginRight: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  routeSelectorButtonText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
   modalContainer: {
     flex: 1,
     backgroundColor: '#fff',
@@ -337,10 +360,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
+    paddingTop: 50,
     backgroundColor: '#f5f5f5',
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0',
-    marginTop: 10,
   },
   closeButton: {
     fontSize: 24,
@@ -394,6 +417,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#2196F3',
   },
+  disabled: {
+    opacity: 0.5,
+  },
   myLocationButtonText: {
     color: '#2196F3',
     fontSize: 12,
@@ -436,6 +462,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
+  activeRoute: {
+    opacity: 0.8,
+  },
   safestButton: {
     backgroundColor: '#4CAF50',
   },
@@ -458,16 +487,5 @@ const styles = StyleSheet.create({
     marginTop: 12,
     color: '#666',
     fontSize: 14,
-  },
-  infoSection: {
-    backgroundColor: '#f5f5f5',
-    borderRadius: 8,
-    padding: 12,
-    marginTop: 'auto',
-  },
-  infoText: {
-    fontSize: 12,
-    color: '#666',
-    textAlign: 'center',
   },
 });

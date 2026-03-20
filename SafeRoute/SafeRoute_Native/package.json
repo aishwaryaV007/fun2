@@ -1,17 +1,21 @@
 {
-  "name": "antigravity-app",
+  "name": "safe-route-mobile",
+  "description": "Women's safety navigation app with real-time crime mapping and SOS alerts",
   "version": "1.0.0",
   "main": "node_modules/expo/AppEntry.js",
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "lint": "eslint src --ext .ts,.tsx",
+    "type-check": "tsc --noEmit"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-community/netinfo": "11.4.1",
-    "@react-navigation/native": "^6.1.9",
+    "@react-navigation/native": "^6.1.18",
+    "@react-navigation/native-stack": "^6.11.0",
     "axios": "^1.13.6",
     "babel-preset-expo": "~54.0.10",
     "expo": "^54.0.33",

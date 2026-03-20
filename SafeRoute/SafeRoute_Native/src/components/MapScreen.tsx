@@ -1,67 +1,73 @@
-import React from 'react';
-import { StyleSheet, View } from 'react-native';
-import MapView, { Heatmap, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
-import { useAppStore } from '../store/useAppStore';
-import { MOCK_USER_LOCATION, HEATMAP_POINTS, FASTEST_ROUTE, SAFEST_ROUTE } from '../utils/mockData';
+import React, { useMemo } from 'react';
+import { StyleSheet, View, ActivityIndicator, Text } from 'react-native';
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE, Region } from 'react-native-maps';
+import useAppStore from '../store/useAppStore';
 import { useRealLocation } from '../hooks/useRealLocation';
+import { SOSButton } from './SOSButton';
 
-export const MapScreen = () => {
-    const { activeRoute, currentRoute } = useAppStore();
-    const { location, isUsingFallback } = useRealLocation();
+export const MapScreen: React.FC = () => {
+    const { location, isLoading, isUsingFallback } = useRealLocation();
 
-    // Use real route from API if available, otherwise fall back to mock data
-    const routeCoordinates = currentRoute?.type === activeRoute 
-        ? currentRoute.coordinates 
-        : (activeRoute === 'fastest' ? FASTEST_ROUTE : SAFEST_ROUTE);
+    const currentRoute = useAppStore((s) => s.currentRoute);
 
-    const routeColor = activeRoute === 'fastest' ? '#2196F3' : '#4CAF50';
-    const initialRegion = {
-        latitude: location?.lat ?? MOCK_USER_LOCATION.latitude,
-        longitude: location?.lng ?? MOCK_USER_LOCATION.longitude,
-        latitudeDelta: MOCK_USER_LOCATION.latitudeDelta,
-        longitudeDelta: MOCK_USER_LOCATION.longitudeDelta,
-    };
+    const region: Region = useMemo(
+        () => ({
+            latitude: location?.lat ?? 17.4435,
+            longitude: location?.lng ?? 78.3484,
+            latitudeDelta: 0.01,
+            longitudeDelta: 0.01,
+        }),
+        [location]
+    );
+
+    const pathCoordinates = useMemo(() => {
+        return (
+            currentRoute?.coordinates?.map((c) => ({ latitude: c.latitude, longitude: c.longitude })) || []
+        );
+    }, [currentRoute]);
 
     return (
         <View style={styles.container}>
             <MapView
-                style={styles.map}
-                initialRegion={initialRegion}
                 provider={PROVIDER_GOOGLE}
-                showsUserLocation={!isUsingFallback}
-                showsMyLocationButton={!isUsingFallback}
+                style={styles.map}
+                initialRegion={region}
+                showsUserLocation={true}
+                followsUserLocation={true}
             >
-                {/* Heatmap Layer */}
-                <Heatmap
-                    points={HEATMAP_POINTS as any}
-                    radius={50}
-                    opacity={0.6}
-                    gradient={{
-                        colors: ['#00000000', '#FFFF00', '#FF0000'],
-                        startPoints: [0, 0.5, 1],
-                        colorMapSize: 256,
-                    }}
-                />
+                {pathCoordinates.length > 0 && <Polyline coordinates={pathCoordinates} strokeWidth={4} strokeColor="#1976D2" />}
 
-                {/* Dynamic Route Polyline */}
-                <Polyline
-                    coordinates={routeCoordinates}
-                    strokeColor={routeColor}
-                    strokeWidth={4}
-                    lineDashPattern={[1]}
-                />
+                {pathCoordinates.length > 0 && <Marker coordinate={pathCoordinates[0]} pinColor="green" />}
+                {pathCoordinates.length > 1 && <Marker coordinate={pathCoordinates[pathCoordinates.length - 1]} pinColor="red" />}
             </MapView>
+
+            {/* Render SOS button AFTER the map so it sits on top */}
+            <SOSButton />
+
+            {(isLoading || !location) && (
+                <View style={styles.loadingOverlay} pointerEvents="none">
+                    <ActivityIndicator size="large" color="#1976D2" />
+                    <Text style={styles.loadingText}>{isUsingFallback ? 'Using fallback location' : 'Fetching location…'}</Text>
+                </View>
+            )}
         </View>
     );
 };
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: '#000',
+    container: { flex: 1 },
+    map: { flex: 1 },
+    loadingOverlay: {
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        top: 0,
+        bottom: 0,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: 'rgba(255,255,255,0.6)',
     },
-    map: {
-        width: '100%',
-        height: '100%',
-    },
+    loadingText: { marginTop: 8, color: '#333' },
 });
+
+export default MapScreen;

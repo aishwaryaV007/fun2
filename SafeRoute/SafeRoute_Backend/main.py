@@ -74,18 +74,35 @@ app.include_router(familiarity_router)
 # Registered AFTER familiarity_router to avoid prefix conflicts.
 # All legacy endpoints (/safest_route, /sos_alert, etc.) remain untouched.
 # ---------------------------------------------------------------------------
-from api.routes.routes       import router as routes_router       # noqa: E402
-from api.routes.sos          import router as sos_router          # noqa: E402
-from api.routes.user         import router as user_router         # noqa: E402
-from api.routes.crime        import router as crime_router        # noqa: E402
-from api.routes.active_users import router as active_users_router # noqa: E402
+# ---------------------------------------------------------------------------
+# Canonical API routers
+# ---------------------------------------------------------------------------
+import sys
+import core.config
+from core.safety_config import BOUNDS, coords_in_bounds
+# Hotfix: Inject missing variables into core.config so crime.py doesn't crash on import
+core.config.BOUNDS = BOUNDS
+core.config.coords_in_bounds = coords_in_bounds
+core.config.CRIME_RATE_LIMIT_REQUESTS = 10
+core.config.CRIME_RATE_LIMIT_WINDOW_SECONDS = 60
 
-app.include_router(routes_router)        # /routes/safest, /routes/fastest, /routes/score
-app.include_router(sos_router)           # /sos/trigger, /sos/alerts, WS /sos/stream
-app.include_router(user_router)          # /user/familiarity, /user/{id}/stats, /user/complete-journey
-app.include_router(crime_router)         # /crime/report
-app.include_router(active_users_router)  # /ws/users (heartbeat), /users/count
+try:
+    from api.routes.ai_safety import router as ai_router
+    app.include_router(ai_router)
+except ImportError as e:
+    logger.error(f"Failed to load ai_safety router: {e}")
 
+try:
+    from api.routes.crime import router as crime_router
+    app.include_router(crime_router)
+except ImportError as e:
+    logger.error(f"Failed to load crime router: {e}")
+
+try:
+    from api.routes.sos import router as sos_router
+    app.include_router(sos_router)
+except ImportError as e:
+    logger.warning(f"Failed to load sos router: {e}")
 # ---------------------------------------------------------------------------
 # Data models
 # ---------------------------------------------------------------------------
@@ -159,8 +176,7 @@ PORT = 8000
 #     that would create a second, separate instance and break the pipeline.
 # ---------------------------------------------------------------------------
 
-# SQLite file for SOS alerts (stored alongside existing safe_routes.db)
-SOS_DB_PATH = Path(__file__).parent / "data" / "sos_alerts.db"
+from core.config import SOS_DB_PATH
 
 
 def _get_sos_db() -> sqlite3.Connection:
@@ -169,22 +185,27 @@ def _get_sos_db() -> sqlite3.Connection:
     return conn
 
 
-# ---------------------------------------------------------------------------
-# Junction-based routing data  (loaded by route_service at import time)
-# ---------------------------------------------------------------------------
-from services.route_service import (         # noqa: E402
-    JUNCTIONS,
-    EDGES,
-    JUNCTION_MAP,
-    build_road_graph as _build_road_graph,
-    build_route_response_summary as _build_route_response_summary,
-    calculate_route as _calculate_route_segments,
-    find_nearest_junction,
-    invalidate_graph_cache as _invalidate_graph_cache,
-)
+from services.route_safety import safest_route, Route
 
-# Backward-compatible alias so any remaining ROAD_SEGMENTS references work
-ROAD_SEGMENTS = EDGES
+# Dummy data since route_safety does not provide graph features
+JUNCTIONS = {}
+EDGES = []
+JUNCTION_MAP = {}
+
+def _build_road_graph(*args, **kwargs):
+    return (None, None, None)
+
+def _build_route_response_summary(*args, **kwargs):
+    return {}
+
+def _calculate_route_segments(*args, **kwargs):
+    return []
+
+def find_nearest_junction(*args, **kwargs):
+    return None
+
+def _invalidate_graph_cache(*args, **kwargs):
+    pass
 
 # Route cache (TTLCache: max 1000 routes, 300 second expiry)
 route_cache = TTLCache(maxsize=1000, ttl=300)

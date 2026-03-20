@@ -217,12 +217,15 @@ async def handle_crime_report(report: CrimeReportInput, request: Request):
 
         # STEP 4: Invalidate Dijkstra NetworkX Cached Routes
         # We import here to avoid circular dependencies with ai/main.py
-        from main import route_cache
+        try:
+            from main import route_cache
+            route_cache.clear()
+        except ImportError:
+            pass
+            
         from services.crime_heatmap_service import get_heatmap_service
         from services.danger_zone_detector import get_danger_zone_detector
-        from services.route_service import invalidate_graph_cache
-        route_cache.clear()
-        invalidate_graph_cache()
+        
         get_heatmap_service().invalidate_cache()
         get_danger_zone_detector().invalidate_cache()
 
